@@ -56,7 +56,7 @@
             this.button1.TabIndex = 3;
             this.button1.Text = "Wybierz plik";
             this.button1.UseVisualStyleBackColor = true;
-            this.button1.Click += new System.EventHandler(this.onTab1ChooseFile);
+            this.button1.Click += new System.EventHandler(this.OnTab1ChooseFile);
             // 
             // tabControl1
             // 
@@ -93,7 +93,7 @@
             this.button2.TabIndex = 4;
             this.button2.Text = "Przetwarzaj plik";
             this.button2.UseVisualStyleBackColor = true;
-            this.button2.Click += new System.EventHandler(this.onTab1ProcessFile);
+            this.button2.Click += new System.EventHandler(this.OnTab1ProcessFile);
             // 
             // tabPage2
             // 
