@@ -10,6 +10,12 @@ using QRCoder;
 using System.Text.RegularExpressions;
 using System.Windows;
 using Word = Microsoft.Office.Interop.Word;
+using ZXing;
+using Bytescout.PDFRenderer;
+using iText;
+using iText.Kernel.Pdf;
+using iText.Kernel.Utils;
+using iText.Commons.Datastructures;
 
 namespace PW_qrCode_tool
 {
@@ -67,6 +73,47 @@ namespace PW_qrCode_tool
             }
         }
 
+        private void OnTab2ChooseFile(object sender, EventArgs e)
+        {
+            System.Windows.Forms.OpenFileDialog fileDialog = new System.Windows.Forms.OpenFileDialog();
+            fileDialog.Filter = "Plik PDF (.pdf)|*.pdf";
+            fileDialog.FileOk += delegate (object s, CancelEventArgs ev)
+            {
+                string ext = Path.GetExtension(fileDialog.FileName);
+                if (ext != ".pdf")
+                {
+                    System.Windows.MessageBox.Show("Wybrany plik nie jest plikem PDF!");
+                    ev.Cancel = true;
+                }
+            };
+            if (fileDialog.ShowDialog() == DialogResult.OK)
+            {
+                textBox1.Text = fileDialog.FileName;
+            }
+            fileDialog.Dispose();
+        }
+
+        private void OnTab2ProcessFile(object sender, EventArgs e)
+        {
+            string path = textBox1.Text;
+            string ext = Path.GetExtension(path);
+
+            if (ext != ".pdf")
+            {
+                System.Windows.MessageBox.Show("Wybrany plik nie jest plikem PDF!");
+                return;
+            }
+
+            if (!File.Exists(path))
+            {
+                System.Windows.MessageBox.Show(String.Format("Plik {0} nie istnieje!", path));
+            }
+            else
+            {
+                ProcessPDFFile(path);
+            }
+        }
+
         protected void ProcessWordFile(string path)
         {
             if (path.Length == 0)
@@ -89,11 +136,11 @@ namespace PW_qrCode_tool
             }
         }
 
-        protected void ProcessDoc(string path) 
+        protected void ProcessDoc(string path)
         {
             Word._Application application = new Word.Application();
             object fileformat = Word.WdSaveFormat.wdFormatXMLDocument;
-           
+
             object filename = path;
             object tempFileName = Path.GetFileName(path).ToLower().Replace(Path.GetExtension(path), "");
             string uuid = Guid.NewGuid().ToString();
@@ -103,9 +150,9 @@ namespace PW_qrCode_tool
             document.Convert();
             document.SaveAs(newfilename, fileformat);
             document.Close();
-            
+
             document = null;
-            
+
             application.Quit();
             application = null;
             ProcessDocx(newfilename);
@@ -124,7 +171,7 @@ namespace PW_qrCode_tool
                     Footer[] footers = { section.Footers.First, section.Footers.Odd, section.Footers.Even };
                     Footer footer = footers[0];
                     bool flag = false;
-                    foreach(Footer f in footers)
+                    foreach (Footer f in footers)
                     {
                         if (f != null)
                         {
@@ -136,11 +183,11 @@ namespace PW_qrCode_tool
 
                     if (flag == false)
                     {
-                        System.Windows.MessageBox.Show("Wybrany plik nie posiada stopki!"); 
+                        System.Windows.MessageBox.Show("Wybrany plik nie posiada stopki!");
                         return;
                     }
                     string checkFooterText = footer.Paragraphs.FirstOrDefault().Text;
-                    
+
                     if (checkFooterText.Length == 0)
                     {
                         footer = section.Footers.Even;
@@ -157,13 +204,14 @@ namespace PW_qrCode_tool
                         if (paragraph != null)
                         {
                             string footerText = paragraph.Text;
-                            if(footerText.Length > 0)
+                            if (footerText.Length > 0)
                             {
-                                int foundIndex = footerText.IndexOf("pernr")+5;
+                                int foundIndex = footerText.IndexOf("pernr") + 5;
                                 string pernr = footerText.Substring(foundIndex);
                                 pernr = pernr.Trim('}');
                                 string pattern = @"^\d{8}$";
-                                if(Regex.IsMatch(pernr, pattern)) {
+                                if (Regex.IsMatch(pernr, pattern))
+                                {
                                     paragraph.RemoveText(0, footerText.Length, false, false);
                                     Bitmap qrCodeBitmap = GenerateQrCode(pernr);
                                     MemoryStream memoStream = new MemoryStream();
@@ -199,7 +247,7 @@ namespace PW_qrCode_tool
                             document.SaveAs(saveFileDialog1.FileName);
                         }
                     }
-                    
+
                 }
             }
         }
@@ -211,6 +259,80 @@ namespace PW_qrCode_tool
             QRCode qrCode = new QRCode(qrCodeData);
             Bitmap qrCodeImage = qrCode.GetGraphic(20);
             return qrCodeImage;
+        }
+
+        protected void ProcessPDFFile(string path)
+        {
+            if (path.Length == 0)
+            {
+                return;
+            }
+
+            // Create an instance of Bytescout.PDFRenderer.RasterRenderer object and register it.
+            RasterRenderer renderer = new RasterRenderer();
+            //renderer.RegistrationName = "demo";
+            //renderer.RegistrationKey = "demo";
+
+            var reader = new BarcodeReader();
+            
+
+            // Load PDF document.
+            renderer.LoadDocumentFromFile(path);
+            Page[] pdfPages = new Page[renderer.GetPageCount()];
+            for (int i = 0; i < renderer.GetPageCount(); i++)
+            {
+                // Render first page of the document to BMP image file.
+                
+                System.Drawing.Image img = renderer.GetImage(i, 118);
+                Bitmap btm = img as Bitmap;
+                var results = reader.Decode(btm);
+                if (results != null)
+                {
+                    pdfPages[i] = new Page(i.ToString() , results.ToString(), btm, img);
+                }
+            }
+
+            string outputFile = Path.GetDirectoryName(path);
+            outputFile = outputFile + "\\" + pdfPages[0].decodedQR + ".pdf";
+            ExtractPages(path, outputFile, "1, 4");
+        }
+        protected void ExtractPages(string sourcePDFpath, string outputFile, string pageRange)
+        {
+            
+            PdfDocument pdfDoc = new PdfDocument(new PdfReader(sourcePDFpath));
+            var split = new MySplitter(pdfDoc, outputFile);
+            var result = split.ExtractPageRange(new PageRange(pageRange));
+            result.Close();
+        }
+    }
+
+    class MySplitter : PdfSplitter
+    {
+        string toFile=null;
+        public MySplitter(PdfDocument pdfDocument, string toFile) : base(pdfDocument)
+        {
+            this.toFile = toFile;
+        }
+
+        protected override PdfWriter GetNextPdfWriter(PageRange documentPageRange)
+        {
+            return new PdfWriter(this.toFile);
+        }
+    }
+
+    class Page
+    {
+        public string pageNumber { get; set; }
+        public string decodedQR { get; set; }
+        public Bitmap bmp { get; set; }
+        public System.Drawing.Image img { get; set; }
+
+        public Page(string pageNumber, string decodedQR, Bitmap bmp, System.Drawing.Image img)
+        {
+            this.pageNumber = pageNumber;
+            this.decodedQR = decodedQR;
+            this.bmp = bmp;
+            this.img = img;
         }
     }
 }
