@@ -15,7 +15,7 @@ using Bytescout.PDFRenderer;
 using iText;
 using iText.Kernel.Pdf;
 using iText.Kernel.Utils;
-using iText.Commons.Datastructures;
+using iText.Bouncycastleconnector;
 
 namespace PW_qrCode_tool
 {
@@ -298,25 +298,49 @@ namespace PW_qrCode_tool
         }
         protected void ExtractPages(string sourcePDFpath, string outputFile, string pageRange)
         {
-            
-            PdfDocument pdfDoc = new PdfDocument(new PdfReader(sourcePDFpath));
-            var split = new MySplitter(pdfDoc, outputFile);
-            var result = split.ExtractPageRange(new PageRange(pageRange));
+
+            //PdfDocument pdfDoc = new PdfDocument(new PdfReader(sourcePDFpath));
+            //var split = new MySplitter(pdfDoc);
+            //var result = split.ExtractPageRange(new PageRange(pageRange));
+            //result.Close();
+
+            string range = "1, 3";
+            var pdfDocumentInvoiceNumber = new PdfDocument(new PdfReader(sourcePDFpath));
+            var split = new ImprovedSplitter(pdfDocumentInvoiceNumber, pageRange2 => new PdfWriter(outputFile));
+            var result = split.ExtractPageRange(new PageRange(range));
             result.Close();
         }
     }
 
     class MySplitter : PdfSplitter
     {
-        string toFile=null;
-        public MySplitter(PdfDocument pdfDocument, string toFile) : base(pdfDocument)
+        //string toFile=null;
+        //public MySplitter(PdfDocument pdfDocument, string toFile) : base(pdfDocument)
+        //{
+        //    this.toFile = toFile;
+        //}
+        public MySplitter(PdfDocument pdfDocument) : base(pdfDocument)
         {
-            this.toFile = toFile;
         }
 
         protected override PdfWriter GetNextPdfWriter(PageRange documentPageRange)
         {
-            return new PdfWriter(this.toFile);
+            String toFile = @"C:\Users\marci\OneDrive\Pulpit\regulacje_pliki\Extracted.pdf";
+            return new PdfWriter(toFile);
+        }
+    }
+
+    class ImprovedSplitter : PdfSplitter
+    {
+        private Func<PageRange, PdfWriter> nextWriter;
+        public ImprovedSplitter(PdfDocument pdfDocument, Func<PageRange, PdfWriter> nextWriter) : base(pdfDocument)
+        {
+            this.nextWriter = nextWriter;
+        }
+
+        protected override PdfWriter GetNextPdfWriter(PageRange documentPageRange)
+        {
+            return nextWriter.Invoke(documentPageRange);
         }
     }
 
