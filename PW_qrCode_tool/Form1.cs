@@ -16,6 +16,7 @@ using iText;
 using iText.Kernel.Pdf;
 using iText.Kernel.Utils;
 using iText.Bouncycastleconnector;
+using System.Collections.Generic;
 
 namespace PW_qrCode_tool
 {
@@ -278,23 +279,39 @@ namespace PW_qrCode_tool
 
             // Load PDF document.
             renderer.LoadDocumentFromFile(path);
-            Page[] pdfPages = new Page[renderer.GetPageCount()];
+            //Page[] pdfPages = new Page[renderer.GetPageCount()];
+            Dictionary <string, string> pernrPages = new Dictionary<string, string>();
             for (int i = 0; i < renderer.GetPageCount(); i++)
             {
                 // Render first page of the document to BMP image file.
                 
                 System.Drawing.Image img = renderer.GetImage(i, 118);
                 Bitmap btm = img as Bitmap;
-                var results = reader.Decode(btm);
-                if (results != null)
+                var pernr = reader.Decode(btm);
+                if (pernr != null)
                 {
-                    pdfPages[i] = new Page(i.ToString() , results.ToString(), btm, img);
+                    if(pernrPages.ContainsKey(pernr.ToString()))
+                    {
+                        pernrPages[pernr.ToString()] = pernrPages[pernr.ToString()] + " ," + (i + 1).ToString();
+                    }
+                    else
+                    {
+                        pernrPages[pernr.ToString()] = (i + 1).ToString();
+                    }
+
+                    
+                    //pdfPages[i] = new Page((i+1).ToString() , results.ToString());
                 }
             }
 
-            string outputFile = Path.GetDirectoryName(path);
-            outputFile = outputFile + "\\" + pdfPages[0].decodedQR + ".pdf";
-            ExtractPages(path, outputFile, "1, 4");
+            string outputFile = "";
+
+            foreach (var page in pernrPages)
+            {
+                outputFile = Path.GetDirectoryName(path);
+                outputFile = outputFile + "\\" + page.Key + ".pdf";
+                ExtractPages(path, outputFile, page.Value);
+            }
         }
         protected void ExtractPages(string sourcePDFpath, string outputFile, string pageRange)
         {
@@ -304,10 +321,9 @@ namespace PW_qrCode_tool
             //var result = split.ExtractPageRange(new PageRange(pageRange));
             //result.Close();
 
-            string range = "1, 3";
             var pdfDocumentInvoiceNumber = new PdfDocument(new PdfReader(sourcePDFpath));
-            var split = new ImprovedSplitter(pdfDocumentInvoiceNumber, pageRange2 => new PdfWriter(outputFile));
-            var result = split.ExtractPageRange(new PageRange(range));
+            var split = new ImprovedSplitter(pdfDocumentInvoiceNumber, range => new PdfWriter(outputFile));
+            var result = split.ExtractPageRange(new PageRange(pageRange));
             result.Close();
         }
     }
@@ -348,15 +364,11 @@ namespace PW_qrCode_tool
     {
         public string pageNumber { get; set; }
         public string decodedQR { get; set; }
-        public Bitmap bmp { get; set; }
-        public System.Drawing.Image img { get; set; }
 
-        public Page(string pageNumber, string decodedQR, Bitmap bmp, System.Drawing.Image img)
+        public Page(string pageNumber, string decodedQR)
         {
             this.pageNumber = pageNumber;
             this.decodedQR = decodedQR;
-            this.bmp = bmp;
-            this.img = img;
         }
     }
 }
