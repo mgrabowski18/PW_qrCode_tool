@@ -17,6 +17,12 @@ using iText.Kernel.Pdf;
 using iText.Kernel.Utils;
 using iText.Bouncycastleconnector;
 using System.Collections.Generic;
+using Stream = System.IO.Stream;
+using System.Windows.Controls;
+using PageRange = iText.Kernel.Utils.PageRange;
+using Microsoft.Office.Interop.Word;
+using Section = Xceed.Document.NET.Section;
+using Paragraph = Xceed.Document.NET.Paragraph;
 
 namespace PW_qrCode_tool
 {
@@ -130,7 +136,8 @@ namespace PW_qrCode_tool
                     ProcessDoc(path);
                     break;
                 case ".docx":
-                    ProcessDocx(path);
+                    ProcessDocxInterop(path);
+                    //ProcessDocx(path);
                     break;
                 default:
                     break;
@@ -160,14 +167,31 @@ namespace PW_qrCode_tool
             File.Delete(newfilename);
         }
 
+        protected void ProcessDocxInterop(string path)
+        {
+            Word._Application application = new Word.Application();
+            Word._Document documentWord = application.Documents.Open(path);
+            var pages = documentWord.ComputeStatistics(Word.WdStatistic.wdStatisticPages, false);
+
+            //documentWord.Activate();
+            object fullname = path.Replace(".docx", ".pdf");
+            object fileFormat = WdSaveFormat.wdFormatPDF;
+            documentWord.SaveAs(fullname, fileFormat);
+
+            documentWord.Close();
+
+            
+        }
+
         protected void ProcessDocx(string path)
         {
             using (var document = DocX.Load(path))
             {
-                int page = 0;
-                while (page < document.Sections.Count)
+                Dictionary<int, string> sectionToPernr = new Dictionary<int, string>();
+                int sectionNumber = 0;
+                while (sectionNumber < document.Sections.Count)
                 {
-                    Xceed.Document.NET.Section section = document.Sections[page];
+                    Section section = document.Sections[sectionNumber];
 
                     Footer[] footers = { section.Footers.First, section.Footers.Odd, section.Footers.Even };
                     Footer footer = footers[0];
@@ -201,7 +225,7 @@ namespace PW_qrCode_tool
                     if (footer != null)
                     {
                         // Odczytaj zawartość paragrafu w stopce
-                        Xceed.Document.NET.Paragraph paragraph = footer.Paragraphs.FirstOrDefault();
+                        Paragraph paragraph = footer.Paragraphs.FirstOrDefault();
                         if (paragraph != null)
                         {
                             string footerText = paragraph.Text;
@@ -213,21 +237,23 @@ namespace PW_qrCode_tool
                                 string pattern = @"^\d{8}$";
                                 if (Regex.IsMatch(pernr, pattern))
                                 {
-                                    paragraph.RemoveText(0, footerText.Length, false, false);
-                                    Bitmap qrCodeBitmap = GenerateQrCode(pernr);
-                                    MemoryStream memoStream = new MemoryStream();
-                                    qrCodeBitmap.Save(memoStream, System.Drawing.Imaging.ImageFormat.Png);
-                                    Xceed.Document.NET.Image image = document.AddImage(memoStream);
-                                    var picture = image.CreatePicture(100f, 100f);
-                                    paragraph.Alignment = Alignment.center;
-                                    paragraph.AppendPicture(picture);
+                                    sectionToPernr.Add(sectionNumber,pernr.ToString());
+                                    
+                                    
+                                    //paragraph.RemoveText(0, footerText.Length, false, false);
+                                    //Bitmap qrCodeBitmap = GenerateQrCode(pernr);
+                                    //MemoryStream memoStream = new MemoryStream();
+                                    //qrCodeBitmap.Save(memoStream, System.Drawing.Imaging.ImageFormat.Png);
+                                    //Xceed.Document.NET.Image image = document.AddImage(memoStream);
+                                    //var picture = image.CreatePicture(100f, 100f);
+                                    //paragraph.Alignment = Alignment.center;
+                                    //paragraph.AppendPicture(picture);
                                 }
                             }
                         }
                     }
-                    page++;
+                    sectionNumber++;
                 }
-
                 Stream myStream;
                 SaveFileDialog saveFileDialog1 = new SaveFileDialog();
 
