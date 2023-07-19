@@ -17,6 +17,7 @@ using iText.Kernel.Pdf;
 using iText.Kernel.Utils;
 using iText.Bouncycastleconnector;
 using System.Collections.Generic;
+using System.Windows.Forms.VisualStyles;
 
 namespace PW_qrCode_tool
 {
@@ -165,6 +166,7 @@ namespace PW_qrCode_tool
             using (var document = DocX.Load(path))
             {
                 int page = 0;
+                Dictionary<string, string> pageMap = new Dictionary<string, string>();
                 while (page < document.Sections.Count)
                 {
                     Xceed.Document.NET.Section section = document.Sections[page];
@@ -213,8 +215,32 @@ namespace PW_qrCode_tool
                                 string pattern = @"^\d{8}$";
                                 if (Regex.IsMatch(pernr, pattern))
                                 {
+                                    string qrCode = "";
+                                    if (pageMap.ContainsKey(pernr))
+                                    {
+                                        qrCode = pageMap[pernr];
+                                        if(qrCode.Length != 0)
+                                        {
+                                            string[] words = qrCode.Split('_');
+                                            string pageNumber = words[words.Length - 1];
+                                            pageNumber = pageNumber.Trim('s');
+                                            decimal intPageNumber = Convert.ToDecimal(pageNumber);
+                                            qrCode = pernr + "_s" + intPageNumber.ToString();
+                                            pageMap.Add(pernr, qrCode);
+                                        }
+                                        else
+                                        {
+                                            qrCode = pernr + "_s1";
+                                            pageMap.Add(pernr, qrCode);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        qrCode = pernr + "_s1";
+                                        pageMap.Add(pernr, qrCode);
+                                    }
                                     paragraph.RemoveText(0, footerText.Length, false, false);
-                                    Bitmap qrCodeBitmap = GenerateQrCode(pernr);
+                                    Bitmap qrCodeBitmap = GenerateQrCode(qrCode);
                                     MemoryStream memoStream = new MemoryStream();
                                     qrCodeBitmap.Save(memoStream, System.Drawing.Imaging.ImageFormat.Png);
                                     Xceed.Document.NET.Image image = document.AddImage(memoStream);
