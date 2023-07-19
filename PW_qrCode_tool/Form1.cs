@@ -4,8 +4,6 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
-using Xceed.Words.NET;
-using Xceed.Document.NET;
 using QRCoder;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -17,7 +15,12 @@ using iText.Kernel.Pdf;
 using iText.Kernel.Utils;
 using iText.Bouncycastleconnector;
 using System.Collections.Generic;
-using System.Windows.Forms.VisualStyles;
+using Stream = System.IO.Stream;
+using System.Windows.Controls;
+using PageRange = iText.Kernel.Utils.PageRange;
+using Microsoft.Office.Interop.Word;
+using iText.Kernel.Pdf.Xobject;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 
 namespace PW_qrCode_tool
 {
@@ -125,6 +128,14 @@ namespace PW_qrCode_tool
 
             string ext = Path.GetExtension(path);
 
+            progressBar1.Minimum = 0;
+            progressBar1.Maximum = 10000;
+            progressBar1.Step = 1;
+            progressBar1.Style = ProgressBarStyle.Continuous;
+
+            label2.Text = "Przetwarzanie...";
+
+
             switch (ext)
             {
                 case ".doc":
@@ -163,121 +174,236 @@ namespace PW_qrCode_tool
 
         protected void ProcessDocx(string path)
         {
-            using (var document = DocX.Load(path))
+
+            // Odczyt i zmapowanie danych do wygenerowania QR Kodu ze stopki pliku docx
+            int progressBarRange1 = progressBar1.Maximum / 2;
+            int progressBarRange2 = progressBar1.Maximum;
+            Word._Application application = new Word.Application();
+            Word._Document documentWord = application.Documents.Open(path);
+            var pages = documentWord.ComputeStatistics(Word.WdStatistic.wdStatisticPages, false);
+            Word.Sections documentWordSections = documentWord.Sections;
+
+            PageToCode[] pageToCodes = new PageToCode[documentWordSections.Count+1];
+            int sectionNumber = 1;
+            int startPage, endPage, currentPage, previousPage = 0;
+            while (sectionNumber <= documentWordSections.Count)
             {
-                int page = 0;
-                Dictionary<string, string> pageMap = new Dictionary<string, string>();
-                while (page < document.Sections.Count)
+                Word.Section section = documentWordSections[sectionNumber];
+                Word.HeaderFooter[] footers = { section.Footers[WdHeaderFooterIndex.wdHeaderFooterPrimary], section.Footers[WdHeaderFooterIndex.wdHeaderFooterEvenPages], section.Footers[WdHeaderFooterIndex.wdHeaderFooterFirstPage]};
+                bool flag = false;
+
+                startPage = 1;
+                currentPage = Convert.ToInt32(section.Range.Information[WdInformation.wdActiveEndPageNumber]);
+                endPage = currentPage - previousPage;
+
+                foreach (HeaderFooter f in footers)
                 {
-                    Xceed.Document.NET.Section section = document.Sections[page];
-
-                    Footer[] footers = { section.Footers.First, section.Footers.Odd, section.Footers.Even };
-                    Footer footer = footers[0];
-                    bool flag = false;
-                    foreach (Footer f in footers)
+                    if (f != null)
                     {
-                        if (f != null)
+                        flag = true;
+                        string checkFooterText = f.Range.Text;
+                        if (checkFooterText.Length > 0)
                         {
-                            footer = f;
-                            flag = true;
-                            break;
-                        }
-                    }
-
-                    if (flag == false)
-                    {
-                        System.Windows.MessageBox.Show("Wybrany plik nie posiada stopki!");
-                        return;
-                    }
-                    string checkFooterText = footer.Paragraphs.FirstOrDefault().Text;
-
-                    if (checkFooterText.Length == 0)
-                    {
-                        footer = section.Footers.Even;
-                        checkFooterText = footer.Paragraphs.FirstOrDefault().Text;
-                        if (checkFooterText.Length == 0)
-                        {
-                            footer = section.Footers.Odd;
-                        }
-                    }
-                    if (footer != null)
-                    {
-                        // Odczytaj zawartość paragrafu w stopce
-                        Xceed.Document.NET.Paragraph paragraph = footer.Paragraphs.FirstOrDefault();
-                        if (paragraph != null)
-                        {
-                            string footerText = paragraph.Text;
-                            if (footerText.Length > 0)
+                            int foundIndex = checkFooterText.IndexOf("pernr") + 5;
+                            string pernr = "";
+                            try 
                             {
-                                int foundIndex = footerText.IndexOf("pernr") + 5;
-                                string pernr = footerText.Substring(foundIndex);
-                                pernr = pernr.Trim('}');
-                                string pattern = @"^\d{8}$";
-                                if (Regex.IsMatch(pernr, pattern))
-                                {
-                                    string qrCode = "";
-                                    if (pageMap.ContainsKey(pernr))
-                                    {
-                                        qrCode = pageMap[pernr];
-                                        if(qrCode.Length != 0)
-                                        {
-                                            string[] words = qrCode.Split('_');
-                                            string pageNumber = words[words.Length - 1];
-                                            pageNumber = pageNumber.Trim('s');
-                                            decimal intPageNumber = Convert.ToDecimal(pageNumber);
-                                            qrCode = pernr + "_s" + intPageNumber.ToString();
-                                            pageMap.Add(pernr, qrCode);
-                                        }
-                                        else
-                                        {
-                                            qrCode = pernr + "_s1";
-                                            pageMap.Add(pernr, qrCode);
-                                        }
-                                    }
-                                    else
-                                    {
-                                        qrCode = pernr + "_s1";
-                                        pageMap.Add(pernr, qrCode);
-                                    }
-                                    paragraph.RemoveText(0, footerText.Length, false, false);
-                                    Bitmap qrCodeBitmap = GenerateQrCode(qrCode);
-                                    MemoryStream memoStream = new MemoryStream();
-                                    qrCodeBitmap.Save(memoStream, System.Drawing.Imaging.ImageFormat.Png);
-                                    Xceed.Document.NET.Image image = document.AddImage(memoStream);
-                                    var picture = image.CreatePicture(100f, 100f);
-                                    paragraph.Alignment = Alignment.center;
-                                    paragraph.AppendPicture(picture);
-                                }
+                                pernr = checkFooterText.Substring(foundIndex, 8);
+                            } 
+                            catch (Exception)
+                            {
+                                continue;
+                            }
+                            string pattern = @"^\d{8}$";
+                            if (Regex.IsMatch(pernr, pattern))
+                            {
+                                pageToCodes[sectionNumber] = new PageToCode(sectionNumber, startPage, endPage, currentPage, previousPage, pernr);
+                                break;
                             }
                         }
                     }
-                    page++;
                 }
 
-                Stream myStream;
-                SaveFileDialog saveFileDialog1 = new SaveFileDialog();
-
-                saveFileDialog1.Filter = "docx files (*.docx)|*.docx";
-                saveFileDialog1.RestoreDirectory = true;
-
-                if (saveFileDialog1.ShowDialog() == DialogResult.OK)
+                if (flag == false)
                 {
-                    if (Path.GetExtension(saveFileDialog1.FileName) != ".docx")
-                    {
-                        System.Windows.MessageBox.Show("Plik musi mieć rozszerzenie .docx!");
-                    }
-                    else
-                    {
-                        if ((myStream = saveFileDialog1.OpenFile()) != null)
-                        {
-                            myStream.Close();
-                            document.SaveAs(saveFileDialog1.FileName);
-                        }
-                    }
-
+                    System.Windows.MessageBox.Show("Wybrany plik nie posiada stopki!");
+                    return;
                 }
+                previousPage = currentPage;
+                sectionNumber += 1;
+                progressBar1.Value += progressBarRange1/documentWordSections.Count;
             }
+
+            progressBar1.Value = progressBarRange1;
+            // Utworzenie tymczasowgo pliku pdf na podstawie wskazanego pliku docx
+            object tempFileNameWithoutExtension = Path.GetFileNameWithoutExtension(path).ToLower();
+            string uuid = Guid.NewGuid().ToString();
+            string tempFilename = System.IO.Path.GetTempPath() + tempFileNameWithoutExtension + uuid + ".pdf";
+            object fileFormat = WdSaveFormat.wdFormatPDF;
+            documentWord.SaveAs(tempFilename, fileFormat);
+
+            // Koniec przetwarzania wzorcowego pliku docx
+            documentWord.Close();
+            application.Quit();
+
+            // Utworzenie docelowego pliku PDF przez dialog
+            string newPdfFile = "";
+            Stream myStream;
+            SaveFileDialog saveFileDialog1 = new SaveFileDialog();
+
+            saveFileDialog1.Filter = "PDF Document (*.pdf)|*.pdf";
+            saveFileDialog1.RestoreDirectory = true;
+
+            if (saveFileDialog1.ShowDialog() == DialogResult.OK)
+            {
+                if (Path.GetExtension(saveFileDialog1.FileName) != ".pdf")
+                {
+                    System.Windows.MessageBox.Show("Plik musi mieć rozszerzenie .pdf!");
+                }
+                else
+                {
+                    if ((myStream = saveFileDialog1.OpenFile()) != null)
+                    {
+                        myStream.Close();
+                        newPdfFile = saveFileDialog1.FileName;
+                    }
+                }
+
+            }
+            saveFileDialog1.Dispose();
+
+
+            // Wstawianie do tymczasowego pliku pdf QR Kodów i zapisanie go pod nową nazwą
+            if (newPdfFile.Length > 0)
+            {
+                var pdfDocument = new PdfDocument(new PdfReader(tempFilename), new PdfWriter(newPdfFile));
+                iText.Layout.Document doc = new iText.Layout.Document(pdfDocument);
+                foreach (PageToCode page in pageToCodes)
+                {
+                    if (page == null) {
+                        continue;
+                    }
+                    startPage = page.previousPage + 1;
+                    endPage = page.lastPage;
+                    for (var i = page.pageNumberLow - 1; i < page.pageNumberHigh; i++)
+                    {
+                        string qrCode = page.pernr + "_" + (i + 1);
+                        Bitmap qrCodeBitmap = GenerateQrCode(qrCode);
+                        MemoryStream memoStream = new MemoryStream();
+                        qrCodeBitmap.Save(memoStream, System.Drawing.Imaging.ImageFormat.Png);
+                        PdfImageXObject xObject = new PdfImageXObject(iText.IO.Image.ImageDataFactory.CreatePng(memoStream.ToArray()));
+                        
+                        iText.Layout.Element.Image image = new iText.Layout.Element.Image(xObject, 100f);
+                        image.SetHorizontalAlignment(iText.Layout.Properties.HorizontalAlignment.CENTER);
+                        image.SetMarginTop(iText.Kernel.Geom.PageSize.A4.GetHeight() - 150);
+                        doc.Add(image);
+                    }
+                    progressBar1.Value += (progressBarRange2 - progressBarRange1)/pageToCodes.Length;
+                }
+                pdfDocument.Close();
+            }
+                
+            File.Delete(tempFilename);
+            progressBar1.Value = progressBarRange2;
+            label2.Text = "Ukończono!";
+            System.Windows.MessageBox.Show("Wygenerowano plik z QR Kodami!");
         }
+
+        //protected void ProcessDocx(string path)
+        //{
+        //    using (var document = DocX.Load(path))
+        //    {
+        //        Dictionary<int, string> sectionToPernr = new Dictionary<int, string>();
+        //        int sectionNumber = 0;
+        //        while (sectionNumber < document.Sections.Count)
+        //        {
+        //            Section section = document.Sections[sectionNumber];
+
+        //            Footer[] footers = { section.Footers.First, section.Footers.Odd, section.Footers.Even };
+        //            Footer footer = footers[0];
+        //            bool flag = false;
+        //            foreach (Footer f in footers)
+        //            {
+        //                if (f != null)
+        //                {
+        //                    footer = f;
+        //                    flag = true;
+        //                    break;
+        //                }
+        //            }
+
+        //            if (flag == false)
+        //            {
+        //                System.Windows.MessageBox.Show("Wybrany plik nie posiada stopki!");
+        //                return;
+        //            }
+        //            string checkFooterText = footer.Paragraphs.FirstOrDefault().Text;
+
+        //            if (checkFooterText.Length == 0)
+        //            {
+        //                footer = section.Footers.Even;
+        //                checkFooterText = footer.Paragraphs.FirstOrDefault().Text;
+        //                if (checkFooterText.Length == 0)
+        //                {
+        //                    footer = section.Footers.Odd;
+        //                }
+        //            }
+        //            if (footer != null)
+        //            {
+        //                // Odczytaj zawartość paragrafu w stopce
+        //                Paragraph paragraph = footer.Paragraphs.FirstOrDefault();
+        //                if (paragraph != null)
+        //                {
+        //                    string footerText = paragraph.Text;
+        //                    if (footerText.Length > 0)
+        //                    {
+        //                        int foundIndex = footerText.IndexOf("pernr") + 5;
+        //                        string pernr = footerText.Substring(foundIndex);
+        //                        pernr = pernr.Trim('}');
+        //                        string pattern = @"^\d{8}$";
+        //                        if (Regex.IsMatch(pernr, pattern))
+        //                        {
+        //                            sectionToPernr.Add(sectionNumber,pernr.ToString());
+                                    
+                                    
+        //                            //paragraph.RemoveText(0, footerText.Length, false, false);
+        //                            //Bitmap qrCodeBitmap = GenerateQrCode(pernr);
+        //                            //MemoryStream memoStream = new MemoryStream();
+        //                            //qrCodeBitmap.Save(memoStream, System.Drawing.Imaging.ImageFormat.Png);
+        //                            //Xceed.Document.NET.Image image = document.AddImage(memoStream);
+        //                            //var picture = image.CreatePicture(100f, 100f);
+        //                            //paragraph.Alignment = Alignment.center;
+        //                            //paragraph.AppendPicture(picture);
+        //                        }
+        //                    }
+        //                }
+        //            }
+        //            sectionNumber++;
+        //        }
+        //        Stream myStream;
+        //        SaveFileDialog saveFileDialog1 = new SaveFileDialog();
+
+        //        saveFileDialog1.Filter = "docx files (*.docx)|*.docx";
+        //        saveFileDialog1.RestoreDirectory = true;
+
+        //        if (saveFileDialog1.ShowDialog() == DialogResult.OK)
+        //        {
+        //            if (Path.GetExtension(saveFileDialog1.FileName) != ".docx")
+        //            {
+        //                System.Windows.MessageBox.Show("Plik musi mieć rozszerzenie .docx!");
+        //            }
+        //            else
+        //            {
+        //                if ((myStream = saveFileDialog1.OpenFile()) != null)
+        //                {
+        //                    myStream.Close();
+        //                    document.SaveAs(saveFileDialog1.FileName);
+        //                }
+        //            }
+
+        //        }
+        //    }
+        //}
 
         protected Bitmap GenerateQrCode(string code)
         {
@@ -341,14 +467,8 @@ namespace PW_qrCode_tool
         }
         protected void ExtractPages(string sourcePDFpath, string outputFile, string pageRange)
         {
-
-            //PdfDocument pdfDoc = new PdfDocument(new PdfReader(sourcePDFpath));
-            //var split = new MySplitter(pdfDoc);
-            //var result = split.ExtractPageRange(new PageRange(pageRange));
-            //result.Close();
-
-            var pdfDocumentInvoiceNumber = new PdfDocument(new PdfReader(sourcePDFpath));
-            var split = new ImprovedSplitter(pdfDocumentInvoiceNumber, range => new PdfWriter(outputFile));
+            var pdfDocument = new PdfDocument(new PdfReader(sourcePDFpath));
+            var split = new ImprovedSplitter(pdfDocument, range => new PdfWriter(outputFile));
             var result = split.ExtractPageRange(new PageRange(pageRange));
             result.Close();
         }
@@ -385,6 +505,27 @@ namespace PW_qrCode_tool
             return nextWriter.Invoke(documentPageRange);
         }
     }
+
+    class PageToCode
+    {
+        public int sectionNumber { get; set; }
+        public int pageNumberLow { get; set; }
+        public int pageNumberHigh { get; set; }
+        public int lastPage { get; set; }
+        public int previousPage { get; set; }
+        public string pernr { get; set; }
+
+        public PageToCode(int sectionNumber, int pageNumberLow, int pageNumberHigh, int lastPage, int previousPage, string pernr)
+        {
+            this.sectionNumber = sectionNumber;
+            this.pageNumberLow = pageNumberLow;
+            this.pageNumberHigh = pageNumberHigh;
+            this.lastPage = lastPage;
+            this.previousPage = previousPage;
+            this.pernr = pernr;
+        }
+    }
+
 
     class Page
     {
