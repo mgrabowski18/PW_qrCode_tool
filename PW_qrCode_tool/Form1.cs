@@ -115,6 +115,14 @@ namespace PW_qrCode_tool
             }
             else
             {
+                progressBar2.Minimum = 0;
+                progressBar2.Maximum = 10000;
+                progressBar2.Step = 1;
+                progressBar2.Style = ProgressBarStyle.Continuous;
+
+                label4.Text = "Przetwarzanie...";
+                label4.Refresh();
+
                 ProcessPDFFile(path);
             }
         }
@@ -134,7 +142,7 @@ namespace PW_qrCode_tool
             progressBar1.Style = ProgressBarStyle.Continuous;
 
             label2.Text = "Przetwarzanie...";
-
+            label2.Refresh();
 
             switch (ext)
             {
@@ -174,7 +182,6 @@ namespace PW_qrCode_tool
 
         protected void ProcessDocx(string path)
         {
-
             // Odczyt i zmapowanie danych do wygenerowania QR Kodu ze stopki pliku docx
             int progressBarRange1 = progressBar1.Maximum / 2;
             int progressBarRange2 = progressBar1.Maximum;
@@ -304,106 +311,11 @@ namespace PW_qrCode_tool
             }
                 
             File.Delete(tempFilename);
-            progressBar1.Value = progressBarRange2;
+            progressBar1.Value = progressBar1.Maximum;
             label2.Text = "Ukończono!";
+            label2.Refresh();
             System.Windows.MessageBox.Show("Wygenerowano plik z QR Kodami!");
         }
-
-        //protected void ProcessDocx(string path)
-        //{
-        //    using (var document = DocX.Load(path))
-        //    {
-        //        Dictionary<int, string> sectionToPernr = new Dictionary<int, string>();
-        //        int sectionNumber = 0;
-        //        while (sectionNumber < document.Sections.Count)
-        //        {
-        //            Section section = document.Sections[sectionNumber];
-
-        //            Footer[] footers = { section.Footers.First, section.Footers.Odd, section.Footers.Even };
-        //            Footer footer = footers[0];
-        //            bool flag = false;
-        //            foreach (Footer f in footers)
-        //            {
-        //                if (f != null)
-        //                {
-        //                    footer = f;
-        //                    flag = true;
-        //                    break;
-        //                }
-        //            }
-
-        //            if (flag == false)
-        //            {
-        //                System.Windows.MessageBox.Show("Wybrany plik nie posiada stopki!");
-        //                return;
-        //            }
-        //            string checkFooterText = footer.Paragraphs.FirstOrDefault().Text;
-
-        //            if (checkFooterText.Length == 0)
-        //            {
-        //                footer = section.Footers.Even;
-        //                checkFooterText = footer.Paragraphs.FirstOrDefault().Text;
-        //                if (checkFooterText.Length == 0)
-        //                {
-        //                    footer = section.Footers.Odd;
-        //                }
-        //            }
-        //            if (footer != null)
-        //            {
-        //                // Odczytaj zawartość paragrafu w stopce
-        //                Paragraph paragraph = footer.Paragraphs.FirstOrDefault();
-        //                if (paragraph != null)
-        //                {
-        //                    string footerText = paragraph.Text;
-        //                    if (footerText.Length > 0)
-        //                    {
-        //                        int foundIndex = footerText.IndexOf("pernr") + 5;
-        //                        string pernr = footerText.Substring(foundIndex);
-        //                        pernr = pernr.Trim('}');
-        //                        string pattern = @"^\d{8}$";
-        //                        if (Regex.IsMatch(pernr, pattern))
-        //                        {
-        //                            sectionToPernr.Add(sectionNumber,pernr.ToString());
-                                    
-                                    
-        //                            //paragraph.RemoveText(0, footerText.Length, false, false);
-        //                            //Bitmap qrCodeBitmap = GenerateQrCode(pernr);
-        //                            //MemoryStream memoStream = new MemoryStream();
-        //                            //qrCodeBitmap.Save(memoStream, System.Drawing.Imaging.ImageFormat.Png);
-        //                            //Xceed.Document.NET.Image image = document.AddImage(memoStream);
-        //                            //var picture = image.CreatePicture(100f, 100f);
-        //                            //paragraph.Alignment = Alignment.center;
-        //                            //paragraph.AppendPicture(picture);
-        //                        }
-        //                    }
-        //                }
-        //            }
-        //            sectionNumber++;
-        //        }
-        //        Stream myStream;
-        //        SaveFileDialog saveFileDialog1 = new SaveFileDialog();
-
-        //        saveFileDialog1.Filter = "docx files (*.docx)|*.docx";
-        //        saveFileDialog1.RestoreDirectory = true;
-
-        //        if (saveFileDialog1.ShowDialog() == DialogResult.OK)
-        //        {
-        //            if (Path.GetExtension(saveFileDialog1.FileName) != ".docx")
-        //            {
-        //                System.Windows.MessageBox.Show("Plik musi mieć rozszerzenie .docx!");
-        //            }
-        //            else
-        //            {
-        //                if ((myStream = saveFileDialog1.OpenFile()) != null)
-        //                {
-        //                    myStream.Close();
-        //                    document.SaveAs(saveFileDialog1.FileName);
-        //                }
-        //            }
-
-        //        }
-        //    }
-        //}
 
         protected Bitmap GenerateQrCode(string code)
         {
@@ -420,6 +332,9 @@ namespace PW_qrCode_tool
             {
                 return;
             }
+            int progressBarRange1 = progressBar2.Maximum / 2;
+            int progressBarRange2 = progressBar2.Maximum;
+
 
             // Create an instance of Bytescout.PDFRenderer.RasterRenderer object and register it.
             RasterRenderer renderer = new RasterRenderer();
@@ -432,7 +347,7 @@ namespace PW_qrCode_tool
             // Load PDF document.
             renderer.LoadDocumentFromFile(path);
             //Page[] pdfPages = new Page[renderer.GetPageCount()];
-            Dictionary <string, string> pernrPages = new Dictionary<string, string>();
+            Dictionary<String, Page> pernrPages = new Dictionary<String, Page>();
             for (int i = 0; i < renderer.GetPageCount(); i++)
             {
                 // Render first page of the document to BMP image file.
@@ -440,30 +355,82 @@ namespace PW_qrCode_tool
                 System.Drawing.Image img = renderer.GetImage(i, 118);
                 Bitmap btm = img as Bitmap;
                 var pernr = reader.Decode(btm);
-                if (pernr != null)
+                string[] decodedQr = pernr.ToString().Split('_');
+                string pernrString = decodedQr[0];
+                int pageNumber = Convert.ToInt32(decodedQr[1]);
+                string pattern = @"^\d{8}$";
+                if (pernrString != null && Regex.IsMatch(pernrString, pattern))
                 {
-                    if(pernrPages.ContainsKey(pernr.ToString()))
+                    Page pageMappingObj;
+                    if (pernrPages.ContainsKey(pernrString))
                     {
-                        pernrPages[pernr.ToString()] = pernrPages[pernr.ToString()] + " ," + (i + 1).ToString();
+                        pageMappingObj = pernrPages[pernrString];
+                        pageMappingObj.AddPageMapping(pageNumber, (i+1));
+                        pernrPages[pageMappingObj.pernr] = pageMappingObj;
                     }
                     else
                     {
-                        pernrPages[pernr.ToString()] = (i + 1).ToString();
+                        pageMappingObj = new Page(pernrString);
+                        pageMappingObj.AddPageMapping(pageNumber, (i+1));
+                        pernrPages.Add(pageMappingObj.pernr, pageMappingObj);
                     }
-
-                    
-                    //pdfPages[i] = new Page((i+1).ToString() , results.ToString());
                 }
+                progressBar2.Value += progressBarRange1 / renderer.GetPageCount();
             }
 
-            string outputFile = "";
+            progressBar2.Value = progressBarRange1;
+            string outputFolder = "";
 
-            foreach (var page in pernrPages)
+            FolderBrowserDialog outputFolderDialog = new FolderBrowserDialog();
+            outputFolderDialog.Description = "Wybierz folder w którym mają być zapisane przetworzone pliki";
+            DialogResult result = outputFolderDialog.ShowDialog();
+            if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(outputFolderDialog.SelectedPath))
             {
-                outputFile = Path.GetDirectoryName(path);
-                outputFile = outputFile + "\\" + page.Key + ".pdf";
-                ExtractPages(path, outputFile, page.Value);
+                outputFolder = outputFolderDialog.SelectedPath;
             }
+            else if(string.IsNullOrWhiteSpace(outputFolderDialog.SelectedPath))
+            {
+                System.Windows.MessageBox.Show("Ścieżka do wybranego folder nie istnieje!");
+                label4.Text = string.Empty;
+                label4.Refresh();
+                progressBar2.Value = 0;
+                return;
+            }else
+            {
+                label4.Text = string.Empty;
+                label4.Refresh();
+                progressBar2.Value = 0;
+                return;
+            }
+            
+            foreach (var pernrPage in pernrPages)
+            {
+                string outputFile = outputFolder + "\\" + pernrPage.Key + ".pdf"; ;
+                string pageRange = null;
+                Dictionary<int, int> pagesMapping = pernrPage.Value.GetPageMapping();
+                foreach (var pageMapping in pagesMapping)
+                {
+                    if(pageMapping.Key == 1)
+                    {
+                        pageRange = pageMapping.Value.ToString();
+                    }
+                    else
+                    {
+                        pageRange = pageRange + ',' + pageMapping.Value.ToString();
+                    }
+                    
+                }
+                if (pageRange.Length > 0)
+                {
+                    ExtractPages(path, outputFile, pageRange);
+                }
+                progressBar2.Value += (progressBarRange2-progressBarRange1)/pernrPages.Count();
+            }
+
+            progressBar2.Value = progressBar2.Maximum;
+            label4.Text = "Ukończono!";
+            label4.Refresh();
+            System.Windows.MessageBox.Show("Wygenerowano pliki!");
         }
         protected void ExtractPages(string sourcePDFpath, string outputFile, string pageRange)
         {
@@ -529,13 +496,32 @@ namespace PW_qrCode_tool
 
     class Page
     {
-        public string pageNumber { get; set; }
-        public string decodedQR { get; set; }
+        public string pernr { get; set; }
+        public Dictionary<int, int> pdfToDocPages { get; set; }
 
-        public Page(string pageNumber, string decodedQR)
+        public Page(string pernr)
         {
-            this.pageNumber = pageNumber;
-            this.decodedQR = decodedQR;
+            this.pernr = pernr;
+            this.pdfToDocPages = new Dictionary<int, int>();
+        }
+
+        public void AddPageMapping(int docPageNumber, int pdfPageNumber) 
+        { 
+            if (this.pdfToDocPages.ContainsKey(pdfPageNumber))
+            {
+                this.pdfToDocPages[docPageNumber] = pdfPageNumber;
+            }
+            else
+            {
+                this.pdfToDocPages.Add(docPageNumber, pdfPageNumber);
+            }
+            
+            this.pdfToDocPages = this.pdfToDocPages.OrderBy(obj=>obj.Key).ToDictionary(obj=>obj.Key, obj=>obj.Value);
+        }
+
+        public Dictionary<int,int> GetPageMapping()
+        {
+            return this.pdfToDocPages;
         }
     }
 }
