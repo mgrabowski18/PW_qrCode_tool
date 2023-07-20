@@ -6,21 +6,21 @@ using System.Linq;
 using System.Windows.Forms;
 using QRCoder;
 using System.Text.RegularExpressions;
-using System.Windows;
 using Word = Microsoft.Office.Interop.Word;
 using ZXing;
 using Bytescout.PDFRenderer;
-using iText;
 using iText.Kernel.Pdf;
 using iText.Kernel.Utils;
-using iText.Bouncycastleconnector;
 using System.Collections.Generic;
 using Stream = System.IO.Stream;
-using System.Windows.Controls;
 using PageRange = iText.Kernel.Utils.PageRange;
 using Microsoft.Office.Interop.Word;
 using iText.Kernel.Pdf.Xobject;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement;
+using MessagingToolkit.QRCode.Codec;
+using MessagingToolkit.QRCode.Codec.Data;
+using System.Windows.Controls;
+using System.Drawing.Drawing2D;
+using ZXing.QrCode.Internal;
 
 namespace PW_qrCode_tool
 {
@@ -185,18 +185,19 @@ namespace PW_qrCode_tool
             // Odczyt i zmapowanie danych do wygenerowania QR Kodu ze stopki pliku docx
             int progressBarRange1 = progressBar1.Maximum / 2;
             int progressBarRange2 = progressBar1.Maximum;
-            Word._Application application = new Word.Application();
-            Word._Document documentWord = application.Documents.Open(path);
-            var pages = documentWord.ComputeStatistics(Word.WdStatistic.wdStatisticPages, false);
-            Word.Sections documentWordSections = documentWord.Sections;
+            progressBar1.Value = 0;
+            _Application application = new Word.Application();
+            _Document documentWord = application.Documents.Open(path);
+            var pages = documentWord.ComputeStatistics(WdStatistic.wdStatisticPages, false);
+            Sections documentWordSections = documentWord.Sections;
 
             PageToCode[] pageToCodes = new PageToCode[documentWordSections.Count+1];
             int sectionNumber = 1;
             int startPage, endPage, currentPage, previousPage = 0;
             while (sectionNumber <= documentWordSections.Count)
             {
-                Word.Section section = documentWordSections[sectionNumber];
-                Word.HeaderFooter[] footers = { section.Footers[WdHeaderFooterIndex.wdHeaderFooterPrimary], section.Footers[WdHeaderFooterIndex.wdHeaderFooterEvenPages], section.Footers[WdHeaderFooterIndex.wdHeaderFooterFirstPage]};
+                Section section = documentWordSections[sectionNumber];
+                HeaderFooter[] footers = { section.Footers[WdHeaderFooterIndex.wdHeaderFooterPrimary], section.Footers[WdHeaderFooterIndex.wdHeaderFooterEvenPages], section.Footers[WdHeaderFooterIndex.wdHeaderFooterFirstPage]};
                 bool flag = false;
 
                 startPage = 1;
@@ -275,10 +276,8 @@ namespace PW_qrCode_tool
                         newPdfFile = saveFileDialog1.FileName;
                     }
                 }
-
             }
             saveFileDialog1.Dispose();
-
 
             // Wstawianie do tymczasowego pliku pdf QR Kodów i zapisanie go pod nową nazwą
             if (newPdfFile.Length > 0)
@@ -302,14 +301,13 @@ namespace PW_qrCode_tool
                         
                         iText.Layout.Element.Image image = new iText.Layout.Element.Image(xObject, 100f);
                         image.SetHorizontalAlignment(iText.Layout.Properties.HorizontalAlignment.CENTER);
-                        image.SetMarginTop(iText.Kernel.Geom.PageSize.A4.GetHeight() - 150);
+                        image.SetMarginTop(iText.Kernel.Geom.PageSize.A4.GetHeight() - 155);
                         doc.Add(image);
                     }
                     progressBar1.Value += (progressBarRange2 - progressBarRange1)/pageToCodes.Length;
                 }
                 pdfDocument.Close();
-            }
-                
+            }             
             File.Delete(tempFilename);
             progressBar1.Value = progressBar1.Maximum;
             label2.Text = "Ukończono!";
@@ -321,8 +319,12 @@ namespace PW_qrCode_tool
         {
             QRCodeGenerator qrGenerator = new QRCodeGenerator();
             QRCodeData qrCodeData = qrGenerator.CreateQrCode(code, QRCodeGenerator.ECCLevel.H);
-            QRCode qrCode = new QRCode(qrCodeData);
+            QRCoder.QRCode qrCode = new QRCoder.QRCode(qrCodeData);
             Bitmap qrCodeImage = qrCode.GetGraphic(20);
+
+            Graphics g = Graphics.FromImage(qrCodeImage);
+            g.DrawString(code, new System.Drawing.Font("Adagio Slab", 30, FontStyle.Bold), Brushes.Black, (qrCodeImage.Width/3)-10, 20);
+
             return qrCodeImage;
         }
 
@@ -334,30 +336,37 @@ namespace PW_qrCode_tool
             }
             int progressBarRange1 = progressBar2.Maximum / 2;
             int progressBarRange2 = progressBar2.Maximum;
+            progressBar2.Value = 0;
 
-
-            // Create an instance of Bytescout.PDFRenderer.RasterRenderer object and register it.
             RasterRenderer renderer = new RasterRenderer();
-            //renderer.RegistrationName = "demo";
-            //renderer.RegistrationKey = "demo";
-
             var reader = new BarcodeReader();
             
-
-            // Load PDF document.
             renderer.LoadDocumentFromFile(path);
-            //Page[] pdfPages = new Page[renderer.GetPageCount()];
             Dictionary<String, Page> pernrPages = new Dictionary<String, Page>();
             for (int i = 0; i < renderer.GetPageCount(); i++)
             {
-                // Render first page of the document to BMP image file.
-                
                 System.Drawing.Image img = renderer.GetImage(i, 118);
                 Bitmap btm = img as Bitmap;
                 var pernr = reader.Decode(btm);
-                string[] decodedQr = pernr.ToString().Split('_');
+                string decodedString = null;
+                if (pernr == null)
+                {
+                    QRCodeDecoder decode = new QRCodeDecoder();
+                    decodedString = decode.Decode(new QRCodeBitmapImage(btm));
+
+                } else
+                {
+                    decodedString = pernr.ToString();
+                }
+
+                if (decodedString == null) {
+                    System.Windows.MessageBox.Show(String.Format("Nie udało się odczytać QR Kodu ze strony {0}!", (i+1)));
+                    continue;
+                }
+                string[] decodedQr = decodedString.Split('_');
                 string pernrString = decodedQr[0];
                 int pageNumber = Convert.ToInt32(decodedQr[1]);
+
                 string pattern = @"^\d{8}$";
                 if (pernrString != null && Regex.IsMatch(pernrString, pattern))
                 {
@@ -443,11 +452,6 @@ namespace PW_qrCode_tool
 
     class MySplitter : PdfSplitter
     {
-        //string toFile=null;
-        //public MySplitter(PdfDocument pdfDocument, string toFile) : base(pdfDocument)
-        //{
-        //    this.toFile = toFile;
-        //}
         public MySplitter(PdfDocument pdfDocument) : base(pdfDocument)
         {
         }
