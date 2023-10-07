@@ -343,6 +343,7 @@ namespace PW_qrCode_tool
             
             renderer.LoadDocumentFromFile(path);
             Dictionary<String, Page> pernrPages = new Dictionary<String, Page>();
+            List<int> errorPages = new List<int>();
             for (int i = 0; i < renderer.GetPageCount(); i++)
             {
                 System.Drawing.Image img = renderer.GetImage(i, 118);
@@ -360,12 +361,22 @@ namespace PW_qrCode_tool
                 }
 
                 if (decodedString == null) {
-                    System.Windows.MessageBox.Show(String.Format("Nie udało się odczytać QR Kodu ze strony {0}!", (i+1)));
+                    errorPages.Add(i+1);
                     continue;
                 }
                 string[] decodedQr = decodedString.Split('_');
                 string pernrString = decodedQr[0];
-                int pageNumber = Convert.ToInt32(decodedQr[1]);
+                int pageNumber = 0;
+                if (int.TryParse(decodedQr[1], out _))
+                {
+                    pageNumber = Convert.ToInt32(decodedQr[1]);
+                }
+                else
+                {
+                    errorPages.Add(i + 1);
+                    continue;
+                }
+                
 
                 string pattern = @"^\d{8}$";
                 if (pernrString != null && Regex.IsMatch(pernrString, pattern))
@@ -384,6 +395,12 @@ namespace PW_qrCode_tool
                         pernrPages.Add(pageMappingObj.pernr, pageMappingObj);
                     }
                 }
+                else
+                {
+                    errorPages.Add(i + 1);
+                    continue;
+                }
+
                 progressBar2.Value += progressBarRange1 / renderer.GetPageCount();
             }
 
@@ -439,7 +456,19 @@ namespace PW_qrCode_tool
             progressBar2.Value = progressBar2.Maximum;
             label4.Text = "Ukończono!";
             label4.Refresh();
-            System.Windows.MessageBox.Show("Wygenerowano pliki!");
+            if (errorPages.Count == 0)
+            {
+                System.Windows.MessageBox.Show("Wygenerowano pliki!");
+            }
+            else
+            {
+                string errorPagesMessage = "Nie udało się odczytać QR Kodu ze stron:";
+                foreach(var errorPage in errorPages)
+                {
+                    errorPagesMessage = errorPagesMessage + System.Environment.NewLine + String.Format("{0}", errorPage);
+                }
+                System.Windows.MessageBox.Show(errorPagesMessage);
+            }
         }
         protected void ExtractPages(string sourcePDFpath, string outputFile, string pageRange)
         {
